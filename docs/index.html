@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Garmin Dashboard</title>
+<script src="vendor/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1a1d21; --muted:#5b6470; --line:#e6e8ec;
+    --accent:#3b6ef5; --good:#1f9d55; --warn:#d97706; --bad:#dc2626;
+    --sleep-deep:#2b4a8b; --sleep-light:#6c8ed6; --sleep-rem:#8b5cf6; --sleep-awake:#d1d5db;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1216; --card:#171b21; --ink:#e8eaed; --muted:#9aa4b2; --line:#262b33;
+      --accent:#6a93ff; --sleep-awake:#3a3f47;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:22px 20px 8px;max-width:1180px;margin:0 auto}
+  h1{margin:0;font-size:20px;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  main{max-width:1180px;margin:0 auto;padding:12px 20px 60px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 6px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kpi .label{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px}
+  .kpi .value{font-size:22px;font-weight:650;margin-top:4px}
+  .kpi .foot{color:var(--muted);font-size:11.5px;margin-top:2px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;margin-top:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px 8px}
+  .card h2{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.6px}
+  .card .cv{position:relative;height:240px}
+  .wide{grid-column:1/-1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:right;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px}
+  tbody tr:hover{background:rgba(127,127,127,.06)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .tableWrap{overflow-x:auto}
+  #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+  #gate .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:360px;width:100%}
+  #gate h1{font-size:17px;margin-bottom:4px}
+  #gate p{color:var(--muted);font-size:12.5px;margin:6px 0 14px}
+  #gate input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+    background:var(--bg);color:var(--ink);font-size:14px}
+  #gate button{margin-top:10px;width:100%;padding:10px;border:0;border-radius:9px;
+    background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+  #gate .err{color:var(--bad);font-size:12.5px;margin-top:8px;min-height:16px}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="gate" class="hidden">
+  <form class="box" id="gateForm">
+    <h1>Garmin Dashboard</h1>
+    <p>This dashboard is encrypted. Enter your passphrase to view it.</p>
+    <input type="password" id="pass" autocomplete="current-password" autofocus placeholder="Passphrase">
+    <button type="submit">Unlock</button>
+    <div class="err" id="gateErr"></div>
+  </form>
+</div>
+
+<header>
+  <h1>Garmin Dashboard</h1>
+  <div class="sub" id="updated"></div>
+</header>
+<main id="app" class="hidden">
+  <div class="kpis" id="kpis"></div>
+  <div class="grid">
+    <div class="card"><h2>Sleep (hours &amp; stages)</h2><div class="cv"><canvas id="cSleep"></canvas></div></div>
+    <div class="card"><h2>HRV &mdash; overnight avg vs balanced range</h2><div class="cv"><canvas id="cHrv"></canvas></div></div>
+    <div class="card"><h2>Resting heart rate</h2><div class="cv"><canvas id="cRhr"></canvas></div></div>
+    <div class="card"><h2>Body Battery (low &rarr; high, dot = end of day)</h2><div class="cv"><canvas id="cBb"></canvas></div></div>
+    <div class="card"><h2>Steps vs goal</h2><div class="cv"><canvas id="cSteps"></canvas></div></div>
+    <div class="card"><h2>Stress (avg &amp; max)</h2><div class="cv"><canvas id="cStress"></canvas></div></div>
+    <div class="card wide"><h2>Training load per activity &amp; 7-day rolling total</h2><div class="cv"><canvas id="cLoad"></canvas></div></div>
+  </div>
+  <div class="card wide" style="margin-top:14px">
+    <h2>Activities</h2>
+    <div class="tableWrap"><table id="acts"><thead><tr>
+      <th>Date</th><th>Activity</th><th>Type</th><th>Duration (min)</th><th>Distance (mi)</th>
+      <th>Avg HR</th><th>Max HR</th><th>Cal</th><th>Load</th><th>Aerobic TE</th><th>Anaerobic TE</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function decryptPayload(enc, passphrase){
+  const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase),
+    {name:"PBKDF2"}, false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:b64(enc.salt), iterations:enc.iter, hash:"SHA-256"},
+    km, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(enc.iv)}, key, b64(enc.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+async function boot(){
+  // Plaintext local-preview mode.
+  const plain = await fetch("data.json").then(r => r.ok ? r.json() : null).catch(() => null);
+  if (plain){ render(plain); return; }
+
+  const enc = await fetch("data.enc").then(r => r.json());
+  const gate = $("#gate"), err = $("#gateErr");
+  gate.classList.remove("hidden");
+
+  const tryPass = async (pass) => {
+    try{
+      const data = await decryptPayload(enc, pass);
+      try{ sessionStorage.setItem("gp", pass); }catch(e){}
+      gate.classList.add("hidden");
+      render(data);
+    }catch(e){ err.textContent = "Wrong passphrase."; try{ sessionStorage.removeItem("gp"); }catch(_){}}
+  };
+
+  let saved = null;
+  try{ saved = sessionStorage.getItem("gp"); }catch(e){}
+  if (saved) tryPass(saved);
+
+  $("#gateForm").addEventListener("submit", e => { e.preventDefault(); err.textContent=""; tryPass($("#pass").value); });
+}
+
+// ------------------------------------------------------------------ rendering
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const num = v => (v === null || v === undefined || v === "" || Number.isNaN(+v)) ? null : +v;
+const last = arr => arr.length ? arr[arr.length - 1] : null;
+Chart.defaults.color = css("--muted");
+Chart.defaults.borderColor = css("--line");
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+Chart.defaults.maintainAspectRatio = false;
+Chart.defaults.animation = false;
+
+const HRV_COLORS = {BALANCED:"--good", UNBALANCED:"--warn", LOW:"--bad", POOR:"--bad"};
+
+function kpi(label, value, foot, color){
+  const c = color ? `style="color:${css(color)}"` : "";
+  return `<div class="kpi"><div class="label">${label}</div>
+    <div class="value" ${c}>${value ?? "&mdash;"}</div>
+    <div class="foot">${foot ?? ""}</div></div>`;
+}
+
+function render(data){
+  $("#app").classList.remove("hidden");
+  const gen = new Date(data.generatedAt);
+  $("#updated").textContent =
+    `Last synced ${gen.toLocaleString()} · ${data.days.length} days · ${data.activities.length} activities`;
+
+  const D = data.days, labels = D.map(d => d.date.slice(5));
+  const L = last(D) || {};
+
+  // --- KPIs
+  const fmtH = h => h == null ? null : `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m`;
+  const load7 = sumLoad(data.activities, D.length ? last(D).date : null);
+  $("#kpis").innerHTML = [
+    kpi("Last night sleep", fmtH(num(L.sleepH)), L.sleepScore ? `score ${L.sleepScore}` : (L.bedtime ? `${L.bedtime}–${L.waketime}` : "")),
+    kpi("HRV (overnight)", num(L.hrvLast) != null ? `${L.hrvLast} ms` : null,
+        L.hrvStatus ? L.hrvStatus.toLowerCase() : "", HRV_COLORS[L.hrvStatus] || null),
+    kpi("Resting HR", num(L.rhr) != null ? `${L.rhr} bpm` : null, num(L.rhr7) != null ? `7-day avg ${L.rhr7}` : ""),
+    kpi("Training readiness", L.readiness ?? null, L.readinessLevel ? L.readinessLevel.toLowerCase() : ""),
+    kpi("Body Battery now", L.bbEnd ?? null, (L.bbLow != null ? `range ${L.bbLow}–${L.bbHigh}` : "")),
+    kpi("7-day training load", load7 || null, "sum of activity load"),
+  ].join("");
+
+  // --- Sleep
+  new Chart($("#cSleep"), {
+    data: {
+      labels,
+      datasets: [
+        bar("Deep", D.map(d => num(d.deepH)), css("--sleep-deep"), "y"),
+        bar("Light", D.map(d => num(d.lightH)), css("--sleep-light"), "y"),
+        bar("REM", D.map(d => num(d.remH)), css("--sleep-rem"), "y"),
+        bar("Awake", D.map(d => num(d.awakeH)), css("--sleep-awake"), "y"),
+        {...lineDS("Sleep score", D.map(d => num(d.sleepScore)), css("--accent"), "y1"), type:"line"},
+      ],
+    },
+    options: stacked({ y:{title:t("hours"), stacked:true, beginAtZero:true},
+      y1:{position:"right", title:t("score"), grid:{drawOnChartArea:false}, suggestedMin:0, suggestedMax:100} }),
+  });
+
+  // --- HRV with balanced band
+  new Chart($("#cHrv"), {
+    data: { labels, datasets: [
+      floorDS(D.map(d => num(d.hrvBandLow))),
+      ceilDS(D.map(d => num(d.hrvBandHigh))),
+      lineDS("Overnight avg", D.map(d => num(d.hrvLast)), css("--accent")),
+      lineDS("7-day avg", D.map(d => num(d.hrvWeekly)), css("--muted"), null, true),
+    ]},
+    options: base({ y:{title:t("ms")} }),
+  });
+
+  // --- Resting HR
+  new Chart($("#cRhr"), {
+    data: { labels, datasets: [
+      lineDS("Resting HR", D.map(d => num(d.rhr)), css("--bad")),
+      lineDS("7-day avg", D.map(d => num(d.rhr7)), css("--muted"), null, true),
+    ]},
+    options: base({ y:{title:t("bpm")} }),
+  });
+
+  // --- Body Battery floating bars + end dot
+  new Chart($("#cBb"), {
+    data: { labels, datasets: [
+      { label:"Low→High", type:"bar", data: D.map(d => [num(d.bbLow), num(d.bbHigh)]),
+        backgroundColor: css("--accent")+"55", borderColor: css("--accent"), borderWidth:1,
+        borderSkipped:false, borderRadius:4, barPercentage:.5 },
+      { label:"End of day", type:"line", showLine:false, data: D.map(d => num(d.bbEnd)),
+        pointRadius:4, pointBackgroundColor: css("--ink") },
+    ]},
+    options: base({ y:{min:0, max:100, title:t("battery")} }),
+  });
+
+  // --- Steps
+  new Chart($("#cSteps"), {
+    data: { labels, datasets: [
+      bar("Steps", D.map(d => num(d.steps)), css("--good")),
+      {...lineDS("Goal", D.map(d => num(d.stepGoal)), css("--muted"), null, true), pointRadius:0},
+    ]},
+    options: base({ y:{beginAtZero:true, title:t("steps")} }),
+  });
+
+  // --- Stress
+  new Chart($("#cStress"), {
+    data: { labels, datasets: [
+      bar("Avg stress", D.map(d => num(d.stressAvg)), css("--warn")),
+      lineDS("Max stress", D.map(d => num(d.stressMax)), css("--bad"), null, true),
+    ]},
+    options: base({ y:{beginAtZero:true, max:100, title:t("stress")} }),
+  });
+
+  // --- Training load per activity + rolling 7-day
+  const A = data.activities;
+  const aLabels = A.map(a => `${a.date.slice(5)} ${a.type.replace(/_training$/, "")}`);
+  const rolling = A.map((_, i) => {
+    const end = new Date(A[i].date), start = new Date(end); start.setDate(end.getDate() - 6);
+    return A.reduce((s, x) => {
+      const d = new Date(x.date);
+      return s + (d >= start && d <= end ? (num(x.load) || 0) : 0);
+    }, 0);
+  });
+  new Chart($("#cLoad"), {
+    data: { labels: aLabels, datasets: [
+      bar("Activity load", A.map(a => num(a.load)), css("--accent")),
+      {...lineDS("7-day rolling load", rolling, css("--bad"), "y1"), type:"line"},
+    ]},
+    options: stacked({ y:{beginAtZero:true, title:t("load")},
+      y1:{position:"right", beginAtZero:true, grid:{drawOnChartArea:false}, title:t("7-day load")} }, false),
+  });
+
+  // --- Activities table
+  const tb = $("#acts tbody");
+  const cell = v => `<td>${v ?? "&mdash;"}</td>`;
+  tb.innerHTML = [...A].reverse().map(a => `<tr>
+    <td>${a.date}</td><td>${a.name}</td><td>${a.type}</td>
+    ${cell(a.durMin)}${cell(a.distMi)}${cell(a.avgHr)}${cell(a.maxHr)}${cell(a.calories)}
+    ${cell(a.load != null ? Math.round(a.load) : null)}${cell(a.aeTE)}${cell(a.anTE)}
+  </tr>`).join("");
+}
+
+// chart helpers
+const t = txt => ({ display:true, text:txt });
+const bar = (label, data, color, yAxisID) => {
+  const d = { type:"bar", label, data, backgroundColor:color, borderColor:color, borderRadius:3, borderWidth:0 };
+  if (yAxisID) d.yAxisID = yAxisID;
+  return d;
+};
+const lineDS = (label, data, color, yAxisID, dashed) => {
+  const d = { type:"line", label, data, borderColor:color, backgroundColor:color,
+    tension:.3, pointRadius:2, borderWidth:2, borderDash: dashed ? [5,4] : [], spanGaps:true, fill:false };
+  if (yAxisID) d.yAxisID = yAxisID;
+  return d;
+};
+// balanced-range shading: an invisible floor line, then a ceiling line that fills down to it
+const floorDS = data => ({ type:"line", label:"__floor", data, borderColor:"transparent", pointRadius:0, fill:false });
+const ceilDS = data => ({ type:"line", label:"Balanced range", data, borderColor:"transparent",
+  pointRadius:0, backgroundColor: css("--good")+"22", fill:"-1" });
+function base(scales){
+  return { interaction:{mode:"index", intersect:false},
+    plugins:{ legend:{ labels:{ boxWidth:10, filter: i => i.text !== "__floor" } } },
+    scales: Object.assign({ x:{ grid:{display:false} } }, scales) };
+}
+function stacked(scales, stackX = true){
+  const o = base(scales);
+  o.scales.x.stacked = stackX;
+  return o;
+}
+function sumLoad(acts, endDate){
+  if (!endDate) return 0;
+  const end = new Date(endDate), start = new Date(end); start.setDate(end.getDate() - 6);
+  return Math.round(acts.reduce((s, a) => {
+    const d = new Date(a.date);
+    return s + (d >= start && d <= end ? (+a.load || 0) : 0);
+  }, 0));
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Garmin login token - NEVER commit this. It lives in the GARMIN_TOKENS_JSON
+# repo secret instead.
+.garmin_tokens/
+
+# Built data payloads. The dashboard shell (docs/index.html, docs/vendor/) is
+# committed; the data is regenerated and published by the Actions workflow.
+/docs/data.json
+/docs/data.enc
+
+# Local scratch
+/httpd.log
+/scratch_*

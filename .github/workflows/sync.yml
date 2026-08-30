@@ -1,0 +1,69 @@
+name: Sync Garmin & deploy dashboard
+
+on:
+  schedule:
+    # 11:00 UTC daily. Garmin's overnight metrics (sleep, HRV, readiness) are
+    # usually settled by mid-morning local time. Adjust to taste.
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to sync"
+        default: "10"
+
+# GITHUB_TOKEN needs to push the synced data and publish Pages.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pull data from Garmin
+        env:
+          GARMIN_TOKENS_JSON: ${{ secrets.GARMIN_TOKENS_JSON }}
+        run: python sync_garmin.py sync ${{ github.event.inputs.days || '10' }}
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add garmin
+          git diff --cached --quiet || git commit -m "Garmin sync $(date -u +%Y-%m-%d)"
+          git push
+
+      - name: Build dashboard
+        env:
+          CI: "true"
+          SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}
+        run: python build_site.py
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: sync
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
