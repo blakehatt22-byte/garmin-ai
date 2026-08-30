@@ -55,14 +55,16 @@ def login() -> Garmin:
         garmin = Garmin()
         garmin.login(str(TOKENSTORE))
         return garmin
-    except (FileNotFoundError, GarminConnectAuthenticationError):
-        pass
+    except (FileNotFoundError, GarminConnectAuthenticationError) as e:
+        last_error = e
 
     if not sys.stdin.isatty():
         raise SystemExit(
             "No valid Garmin login token, and not running interactively.\n"
-            "Run `python sync_garmin.py login` on your own machine, then copy the new\n"
-            ".garmin_tokens/garmin_tokens.json into the GARMIN_TOKENS_JSON repo secret."
+            f"Underlying error: {type(last_error).__name__}: {last_error}\n"
+            "If this is CI: Garmin often blocks logins from datacenter IPs. Run the\n"
+            "sync on your own machine instead (see README), or refresh the token with\n"
+            "`python sync_garmin.py login` and update the GARMIN_TOKENS_JSON secret."
         )
 
     print("No saved Garmin login found (or it expired) - let's log in.")
