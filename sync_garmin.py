@@ -44,8 +44,19 @@ def login() -> Garmin:
     tokens_json = os.environ.get("GARMIN_TOKENS_JSON")
     token_file = TOKENSTORE / "garmin_tokens.json"
     if tokens_json and not token_file.exists():
+        # Diagnostic (no secret values printed): confirm the secret is the token JSON.
+        stripped = tokens_json.strip()
+        try:
+            parsed = json.loads(stripped)
+            print(f"[token check] GARMIN_TOKENS_JSON: {len(stripped)} chars, "
+                  f"valid JSON, keys={sorted(parsed)}")
+        except ValueError as e:
+            print(f"[token check] GARMIN_TOKENS_JSON: {len(stripped)} chars, "
+                  f"NOT valid JSON ({e}). First char: {stripped[:1]!r}. "
+                  "The secret should be the exact contents of "
+                  ".garmin_tokens/garmin_tokens.json.")
         TOKENSTORE.mkdir(parents=True, exist_ok=True)
-        token_file.write_text(tokens_json)
+        token_file.write_text(stripped)
         try:
             token_file.chmod(0o600)
         except OSError:
